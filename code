@@ -1,0 +1,218 @@
+#include <MsTimer2.h>
+#include "U8glib.h"
+#include "DHT22.h"
+#include <stdio.h>
+#define DHT22_PIN 2
+#define count 5
+#define CheckTime 1500//interval of checking the value
+
+
+#define MoistureKey
+char buffer[3]={'0','0','\0'};//used to read and show temperature from bluetooth
+char humidity[3]={'0','0','\0'};//used to read and show humidity from bluetooth
+String inter = "";
+String oui= "oui";
+char convert[2]={'1','0'};
+int times=0;
+int period=0;
+int flag;
+int permet=0;
+double temp_detect=0; // temperature value detected
+double humidity_detect=0;   // humidity value detected
+int key_temp;       //threshold of temperature
+int key_humidity;   //threshold of humidity
+
+
+int led = 13;
+ 
+DHT22 myDHT22(DHT22_PIN);
+ 
+U8GLIB_SH1106_128X64 u8g(12, 11, 10, 9, 8);  // D0=13, D1=11, CS=10, DC=9, Reset=8
+
+void setup(void) {
+  Serial.begin(9600);
+  Serial.println( " Welcome to your irrigation system \n set TEMPERATURE of air, please enter 1 ; set HUMIDITY of soil, please enter 2 ; set to WATER manually,please enter 3 \n\n");
+ // Serial.println( char(129));
+  pinMode(led, OUTPUT);
+  MsTimer2::set(500, flash);
+  MsTimer2::start(); 
+  }
+
+void flash() 
+ {
+  times++;
+  if(times == 5){
+  myDHT22.readData();  // Read apin on DHT22
+  times = 0;
+  }
+  period++;
+  if(period==400){
+  checking_water_condition();  //irrigation programme
+  period = 0;
+  }
+  }
+
+void draw() {
+
+  u8g.setFont(u8g_font_unifont);  // select font
+  u8g.drawStr(0, 20, "Temp: ");  // put string of display at position X, Y
+  u8g.drawStr(0, 40, "Hum: ");
+  u8g.drawStr(0, 60, "set: ");
+  u8g.setPrintPos(44, 20);  // set position
+  u8g.print(myDHT22.getTemperatureC(), 0);  // display temperature from DHT22
+  u8g.drawStr(60, 20, "C");
+  u8g.setPrintPos(44, 40);
+  u8g.print(myDHT22.getHumidity(), 0);  // display humidity from DHT22
+  u8g.drawStr(60, 40, "%");
+  u8g.drawStr(44, 60, buffer);
+  u8g.drawStr(60, 60, "C;");
+  u8g.drawStr(75, 60, humidity);
+  u8g.drawStr(90, 60, "%");
+  
+}
+
+void checking_water_condition() {
+   temp_detect=0;
+  humidity_detect=0;
+  for (int i = 0 ; i< count;i++ ){
+  myDHT22.readData();
+  Serial.print(millis());
+  Serial.print( " Checking " );
+  Serial.print( i+1);
+  Serial.print( "......temp: " );
+  double result1 = myDHT22.getTemperatureC();
+  double result2 = myDHT22.getHumidity();
+  Serial.print(result1);
+  Serial.print("; humidity: ");
+  Serial.println(result2 );
+  temp_detect=temp_detect+result1;
+  humidity_detect=humidity_detect+result2;
+  delay(CheckTime); 
+ } 
+  temp_detect = (temp_detect / count);
+  humidity_detect = (humidity_detect / count);
+  
+  Serial.print("Value of Temprature in the air:");
+  Serial.print(temp_detect);
+  Serial.println("C");
+  Serial.print("Value of Humidity in the soil:");
+  Serial.println(humidity_detect);
+   
+  if ((temp_detect >= key_temp && humidity_detect <= key_humidity)||(temp_detect <=key_temp && humidity_detect <= (key_humidity-10))){
+  watering();
+  }
+ 
+}
+  //if(jiao hua guocheng zhong de panduan)
+ 
+ void watering(){
+  Serial.println( "   Starting irrigate... ");
+  for(int j=0;j<5;j++)
+  {if(myDHT22.getHumidity()<=key_humidity){
+  digitalWrite(led, HIGH);   // turn the LED on (HIGH is the voltage level)
+  delay(1000);               // wait for a second
+  digitalWrite(led, LOW);    // turn the LED off by making the voltage LOW
+  delay(1000);               // wait for a second 
+  }
+  else
+ { break;}
+  }
+ 
+  digitalWrite(led,LOW);
+  permet=0;
+  inter=0;
+  Serial.println( "Stopping irrigate...");
+  }
+
+
+void settingdata(){
+    int input;
+    if (permet==1){
+    for(int i=0;i<2;i++){ 
+    buffer[i] = inter[i];
+    input= buffer[i]-48;
+    if (input>=0 && input<=9)
+    {key_temp= (int(buffer[0])-48)*10+(int(buffer[1])-48)*1;}
+    else
+   {Serial.println("wrong input, please retype the setting ");
+    inter=0;
+    return;
+   } }
+     Serial.print( "AIR Temperature are succesfully set as:  ") ;
+     Serial.print( key_temp);
+     Serial.print("\n");
+  } 
+  
+   else if (permet==3){
+    for(int i=0;i<2;i++){
+    humidity[i] = inter[i];
+    input= humidity[i]-48;
+     if (input>=0 && input<=9)
+    {key_humidity= (int(humidity[0])-48)*10+(int(humidity[1])-48)*1; }
+     
+     else
+   { Serial.println( "wrong input, please retype the setting ");
+    inter=0;
+    return;
+   } }
+     Serial.print( "SOIL Humidity are succesfully set as:  ") ;
+     Serial.print( key_humidity);
+     Serial.print("\n");
+ } 
+     inter=0;
+     permet=0;
+ }
+ 
+
+
+
+
+
+void loop(void) {
+  while(Serial.available())
+  { inter += char(Serial.read());
+    flag=int(inter[0]-48);
+    delay(2);   
+  }
+  
+  if (inter.length()==1 && flag>=1 && flag<=3)
+  {
+  switch (flag) {
+    case 1:{
+      Serial.println( "set temperature of air ");
+      inter=0;
+      permet=1;
+    }break;
+    
+    case 2:{
+     Serial.println( "set humidity of soil ");
+     inter=0;
+     permet=3;
+     }break;
+      
+    case 3:{
+    Serial.println( "set to water manually ,enter 'oui' to confirm watering");
+    inter=0;
+    permet=2;
+     }break;
+  }
+  }
+  else if(inter.length()==2 && (permet==1 || permet==3)){
+  settingdata();
+  }
+  else if(inter==oui && permet==2){
+  watering();
+  }
+  else if(inter.length()>0)
+  {
+  Serial.println( "wrong input");
+  inter=0;
+  }
+
+  
+  u8g.firstPage();  
+  do {
+    draw();
+  } while( u8g.nextPage() );
+
+}
